@@ -1,0 +1,25 @@
+Package: dplyrimpaladb
+Type: Package
+Title: dplyrimpaladb: dplyr connector for ImpalaDB
+Version: 0.0.3
+Author: Piers Harding <piers@ompka.net>
+Maintainer: Piers Harding <piers@ompka.net>
+Description: dplyr connector for Hadoop ImpalaDB.
+URL: https://github.com/piersharding/dplyrimpaladb
+Roxygen: list(wrap = FALSE)
+Depends:
+    R (>= 3.0.2)
+Imports:
+    dplyr (>= 0.2.0.9),
+    lazyeval,
+    RJDBC (>= 0.2-3),
+    assertthat
+Suggests:
+    rhdfs (>= 1.0.8),
+    testthat
+VignetteBuilder: knitr
+LazyData: yes
+LinkingTo:
+License: GPL (>= 3) + file LICENSE
+Collate:
+    'src-impaladb.r'
