@@ -104,7 +104,6 @@ auto_names <- function(x) {
   nms
 }
 
-
 unique_name <- local({
   i <- 0
 
@@ -130,14 +129,31 @@ unique_names <- function(x_names, y_names, by, x_suffix = ".x", y_suffix = ".y")
 }
 
 
-common_by <- function(x, y) {
+common_by <- function(by = NULL, x, y) {
+  if (is.list(by)) return(by)
+
+  if (!is.null(by)) {
+    x <- names(by) %||% by
+    y <- unname(by)
+
+    # If x partially named, assume unnamed are the same in both tables
+    x[x == ""] <- y[x == ""]
+
+    return(list(x = x, y = y))
+  }
+
   by <- intersect(tbl_vars(x), tbl_vars(y))
   if (length(by) == 0) {
     stop("No common variables. Please specify `by` param.", call. = FALSE)
   }
   message("Joining by: ", capture.output(dput(by)))
-  by
+
+  list(
+    x = by,
+    y = by
+  )
 }
+
 
 sql_vector <- function(x, parens = NA, collapse = " ", con = NULL) {
   if (is.na(parens)) {
@@ -175,7 +191,8 @@ expandAndCheckClassPath <- function(classpath=NULL,
                                                                    "httpcore.*.jar",
                                                                    "log4j.*.jar",
                                                                    "slf4j-api.*.jar",
-                                                                   "slf4j-log4j.*.jar")) {
+                                                                   "slf4j-log4j.*.jar",
+                                                                   "hive-exec.jar")) {
 
   if (is.null(classpath)) classpath <- getOption('dplyr.jdbc.classpath', NULL)
   if (is.null(classpath)) classpath <- unname(Sys.getenv("CLASSPATH"))
@@ -262,7 +279,7 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
 }
 
 #' @export
-brief_desc.src_impaladb <- function(x) {
+src_desc.src_impaladb <- function(x) {
   info <- x$info
   paste0("ImpalaDB ", "serverVersion: ", info$version, " [",  info$url, "]\n")
 }
@@ -273,22 +290,15 @@ double_escape <- function(x) {
 
 #' @export
 sql_semi_join.ImpalaDBConnection <- function(con, x, y, anti = FALSE, by = NULL, ...) {
-  by <- by %||% common_by(x, y)
-  if (!is.null(names(by))) {
-    by_x <- names(by)
-    by_y <- unname(by)
-  } else {
-    by_x <- by
-    by_y <- by
-  }
-
+  by <- common_by(by, x, y)
   left <- escape(ident("_LEFT"), con = con)
   right <- escape(ident("_RIGHT"), con = con)
   on <- sql_vector(paste0(
-    left, ".", sql_escape_ident(con, by_x), " = ", right, ".", sql_escape_ident(con, by_y)),
+    left, ".", sql_escape_ident(con, by$x), " = ", right, ".", sql_escape_ident(con, by$y)),
     collapse = " AND ", parens = TRUE)
 
-  cols <- unique(c(x$select, y$select))
+  # with a LEFT SEMI JOIN we can only have the LEFT column values returned
+  cols <- x$select
   col_names <- lapply(cols, function (col) {if (length(grep(col, x=x$select)) >= 1) { "_LEFT" } else if (length(grep(col, x=y$select)) >= 1) { "_RIGHT" } else NULL})
 
   # set the alias attribute for result columns
@@ -301,7 +311,6 @@ sql_semi_join.ImpalaDBConnection <- function(con, x, y, anti = FALSE, by = NULL,
 
   from <- build_sql(
     'SELECT ', fields, ' FROM ', sql_subquery(con, x$query$sql, "_LEFT"), '\n\n',
-    # ' FROM ', from(x, "_LEFT"), '\n\n',
     'LEFT SEMI JOIN \n',
     sql_subquery(con, y$query$sql, "_RIGHT"), '\n',
     ' ON ', on
@@ -319,21 +328,13 @@ sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ..
     full = sql("FULL"),
     stop("Unknown join type:", type, call. = FALSE)
   )
-
-  by <- by %||% common_by(x, y)
-  if (!is.null(names(by))) {
-    by_x <- names(by)
-    by_y <- unname(by)
-  } else {
-    by_x <- by
-    by_y <- by
-  }
-  using <- all(by_x == by_y)
+  by <- common_by(by, x, y)
+  using <- all(by$x == by$y)
 
   # Ensure tables have unique names
   x_names <- auto_names(x$select)
   y_names <- auto_names(y$select)
-  uniques <- unique_names(x_names, y_names, by_x[by_x == by_y])
+  uniques <- unique_names(x_names, y_names, by$x[by$x == by$y])
 
   if (is.null(uniques)) {
     sel_vars <- c(x_names, y_names)
@@ -341,17 +342,16 @@ sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ..
     x <- update(x, select = setNames(x$select, uniques$x))
     y <- update(y, select = setNames(y$select, uniques$y))
 
-    by_x <- unname(uniques$x[by_x])
-    by_y <- unname(uniques$y[by_y])
+    by$x <- unname(uniques$x[by$x])
+    by$y <- unname(uniques$y[by$y])
 
     sel_vars <- unique(c(uniques$x, uniques$y))
   }
 
-
   if (using) {
-    cond <- build_sql("USING ", lapply(by_x, ident), con = con)
+    cond <- build_sql("USING ", lapply(by$x, ident), con = con)
   } else {
-    on <- sql_vector(paste0(sql_escape_ident(con, by_x), " = ", sql_escape_ident(con, by_y)),
+    on <- sql_vector(paste0(sql_escape_ident(con, by$x), " = ", sql_escape_ident(con, by$y)),
       collapse = " AND ", parens = TRUE)
     cond <- build_sql("ON ", on, con = con)
   }
@@ -388,8 +388,6 @@ qry_run_once <- function(con, sql, data = NULL, in_transaction = FALSE,
                     show = getOption("dplyr.show_sql", default=FALSE),
                     explain = getOption("dplyr.explain_sql", default=FALSE)) {
   if (show) message(sql)
-  print('here:')
-  print(explain)
   if (explain) message(db_explain(con, sql))
 
   if (in_transaction) {
@@ -451,7 +449,7 @@ tbl.src_impaladb <- function(src, from, ...) {
 }
 
 #' @export
-translate_env.src_impaladb <- function(x) {
+src_translate_env.src_impaladb <- function(x) {
   sql_variant(
     base_scalar,
     sql_translator(.parent = base_agg,
@@ -488,7 +486,6 @@ db_commit.ImpalaDBConnection <- function(con) {
   invisible(TRUE)
 }
 
-
 #' @export
 db_insert_into.ImpalaDBConnection <- function(con, table, values) {
   # Convert factors to strings
@@ -518,7 +515,6 @@ db_insert_into.ImpalaDBConnection <- function(con, table, values) {
 
   invisible()
 }
-
 
 #' @export
 db_data_type.ImpalaDBConnection <- function(con, fields) {

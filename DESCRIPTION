@@ -1,7 +1,7 @@
 Package: dplyrimpaladb
 Type: Package
 Title: dplyrimpaladb: dplyr connector for ImpalaDB
-Version: 0.0.3
+Version: 0.0.4
 Author: Piers Harding <piers@ompka.net>
 Maintainer: Piers Harding <piers@ompka.net>
 Description: dplyr connector for Hadoop ImpalaDB.
@@ -10,7 +10,7 @@ Roxygen: list(wrap = FALSE)
 Depends:
     R (>= 3.0.2)
 Imports:
-    dplyr (>= 0.2.0.9),
+    dplyr (>= 0.4.1),
     lazyeval,
     RJDBC (>= 0.2-3),
     assertthat
