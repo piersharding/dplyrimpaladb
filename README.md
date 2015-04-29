@@ -46,7 +46,7 @@ next install dplyr with:
 Finally install dplyrimpaladb from github:
 
     ```R
-    devtools::install_github("piersharding/impaladbdplyr")
+    devtools::install_github("piersharding/dplyrimpaladb")
     ```
 
 To get started, read the notes below, then read the help(src_impaladb).
