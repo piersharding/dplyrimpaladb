@@ -21,7 +21,7 @@ install RJDBC and assertthat with:
     install.packages(c("RJDBC", "assertthat"))
     ````
 
-next install lazyeval with:
+(should nolonger be required) next install lazyeval with:
 
 * the latest released version from CRAN with
 
@@ -37,7 +37,7 @@ next install dplyr with:
     install.packages("dplyr")
     ````
 
-* the latest development version from github with
+* OR the latest development version from github with
 
     ```R
     devtools::install_github("hadley/dplyr")
