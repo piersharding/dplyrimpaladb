@@ -267,7 +267,7 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
     reg.finalizer(environment(), function(...) {
       if (!quiet) {
         message("Auto-disconnecting ", name, " connection ",
-          "(", paste(con@Id, collapse = ", "), ")")
+          "(", paste(con@dbname, collapse = ", "), ")")
       }
       dbDisconnect(con)
     })
