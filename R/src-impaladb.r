@@ -189,6 +189,7 @@ expandAndCheckClassPath <- function(classpath=NULL,
                                                                    "commons-httpclient.*.jar",
                                                                    "httpclient.*.jar",
                                                                    "httpcore.*.jar",
+                                                                   "guava.*.jar",
                                                                    "log4j.*.jar",
                                                                    "slf4j-api.*.jar",
                                                                    "slf4j-log4j.*.jar",
@@ -221,10 +222,6 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
 
   if (!require("RJDBC")) {
     stop("RJDBC package required to connect to ImpalaDB", call. = FALSE)
-  }
-
-  if (!require("testthat")) {
-    stop("testthat package required to connect to ImpalaDB", call. = FALSE)
   }
 
   if (!require("lazy")) {

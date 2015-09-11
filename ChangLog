@@ -1,0 +1,4 @@
+Fri Sep 11 11:39:13 NZST 2015
+ * remove hard dependancy on testthat - thanks daroczig
+
+
