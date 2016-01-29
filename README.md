@@ -63,6 +63,25 @@ library(dplyrimpaladb)
 # optionally set the class path for the ImpalaDB JDBC connector - alternatively use the CLASSPATH environment variable
 options(dplyr.jdbc.classpath = "/usr/lib/impala")
 
+and set a specialised JAR file list that will be searched first with:
+
+options(dplyr.jdbc.jarfiles=c("commons-logging.*.jar",
+                "hadoop-common.jar",
+                "hive-jdbc.*.jar",
+                "hive-common.*.jar",
+                "hive-metastore.*.jar",
+                "hive-service.*.jar",
+                "libfb303.*.jar",
+                "libthrift.*.jar",
+                "commons-httpclient.*.jar",
+                "httpclient.*.jar",
+                "httpcore.*.jar",
+                "guava.*.jar",
+                "log4j.*.jar",
+                "slf4j-api.*.jar",
+                "slf4j-log4j.*.jar",
+                "hive-exec.jar"))
+
 # To connect to a database first create a src:
 flights <- src_impaladb('flights', host="dragon.local.net")
 cat(brief_desc(flights))

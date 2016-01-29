@@ -2,3 +2,6 @@ Fri Sep 11 11:39:13 NZST 2015
  * remove hard dependancy on testthat - thanks daroczig
 
 
+Sat Jan 30 05:15:22 NZDT 2016
+ * add options(dplyr.jdbc.jarfiles=c()) to enable specific
+ jar file version injection - thanks WheresAlice

@@ -24,6 +24,8 @@
 #' # optionally set the class path for the ImpalaDB JDBC connector - alternatively use the CLASSPATH
 #' # environment variable
 #' options(dplyr.jdbc.classpath = '/path/to/impala-jdbc')
+#' and set a specialised JAR file list that will be searched first with:
+#' options(dplyr.jdbc.jarfiles=c('a.jar','b.jar'))
 #' # To connect to a database first create a src:
 #' my_db <- src_impaladb(dbname="demo")
 #' # Then reference a tbl within that src
@@ -178,22 +180,7 @@ names_to_as <- function(x, con = NULL) {
 }
 
 expandAndCheckClassPath <- function(classpath=NULL,
-         driverclass="org.apache.hive.jdbc.HiveDriver", jarfiles=c("commons-logging.*.jar",
-                                                                   "hadoop-common.jar",
-                                                                   "hive-jdbc.*.jar",
-                                                                   "hive-common.*.jar",
-                                                                   "hive-metastore.*.jar",
-                                                                   "hive-service.*.jar",
-                                                                   "libfb303.*.jar",
-                                                                   "libthrift.*.jar",
-                                                                   "commons-httpclient.*.jar",
-                                                                   "httpclient.*.jar",
-                                                                   "httpcore.*.jar",
-                                                                   "guava.*.jar",
-                                                                   "log4j.*.jar",
-                                                                   "slf4j-api.*.jar",
-                                                                   "slf4j-log4j.*.jar",
-                                                                   "hive-exec.jar")) {
+         driverclass="org.apache.hive.jdbc.HiveDriver", jarfiles=c()) {
 
   if (is.null(classpath)) classpath <- getOption('dplyr.jdbc.classpath', NULL)
   if (is.null(classpath)) classpath <- unname(Sys.getenv("CLASSPATH"))
@@ -235,9 +222,29 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
     opts <- ""
   }
 
+  # setup default list of jars
+  jarfiles <- c("commons-logging.*.jar",
+                "hadoop-common.jar",
+                "hive-jdbc.*.jar",
+                "hive-common.*.jar",
+                "hive-metastore.*.jar",
+                "hive-service.*.jar",
+                "libfb303.*.jar",
+                "libthrift.*.jar",
+                "commons-httpclient.*.jar",
+                "httpclient.*.jar",
+                "httpcore.*.jar",
+                "guava.*.jar",
+                "log4j.*.jar",
+                "slf4j-api.*.jar",
+                "slf4j-log4j.*.jar",
+                "hive-exec.jar")
+
+  jarfiles <- c(getOption('dplyr.jdbc.jarfiles', NULL), jarfiles)
+
   url <- paste0("jdbc:hive2://", host, ":", as.character(port), "/", dbname, opts)
   con <- dbConnect(JDBC(driverclass,
-            expandAndCheckClassPath(driverclass=driverclass),
+            expandAndCheckClassPath(driverclass=driverclass, jarfiles=jarfiles),
             identifier.quote='`'), url, ...)
   res <- dbGetQuery(con, 'SELECT version() AS version') # do this instead of dbGetInfo(con) - returns nothing because of RJDBC!
   info <- list(dbname=dbname, url=url, version=res$version)
@@ -505,6 +512,7 @@ db_insert_into.ImpalaDBConnection <- function(con, table, values) {
   }
   hdfs.init()
   hdfs.put(tmp, '/tmp')
+  # system(paste0('/usr/bin/hdfs dfs -copyFromLocal ', tmp, ' hdfs://hadoop.local.net:8020/tmp/'))
   tmp <- paste0('/tmp/', tail(unlist(strsplit(tmp, '/')), n=1))
 
   sql <- build_sql("LOAD DATA INPATH ", tmp," INTO TABLE ", ident(table), con = con)
