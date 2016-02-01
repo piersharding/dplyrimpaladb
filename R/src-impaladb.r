@@ -12,6 +12,10 @@
 #' @param host,port Host name and port number of database (defaults to localhost:21050)
 #' @param user,password User name and password (if needed)
 #' @param opts=list() a list of options passed to the ImpalaDB driver - defaults to opts=list(auth="noSasl")
+#' @param driverclass="org.apache.hive.jdbc.HiveDriver" the ImpalaDB driver class - the newer driver is "com.cloudera.impala.jdbc41.Driver" - it must correspond to the configured jar library files (configured below)
+#' @param classpath=".:/some/path" the classpath for searching for jar files - see below for alternatives
+#' @param jarfiles=c("a.jar", "b.jar") the additional priority list of jar files - see below for alternatives
+#' @param scheme="hive2" the ImpalaDB connection scheme - older versions are hive2, the newer scheme is "impala"
 #' @param ... for the src, other arguments passed on to the underlying
 #'   database connector, \code{dbConnect}.
 #' @param src a ImpalaDB src created with \code{src_impaladb}.
@@ -200,8 +204,28 @@ expandAndCheckClassPath <- function(classpath=NULL,
   do.call(paste, c(as.list(classpath), sep=":"))
 }
 
-
-src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", password = "", opts=list(auth="noSasl"), ...) {
+src_impaladb <- function(dbname, host = "localhost", port = 21050L,
+                         user = "", password = "",
+                         opts=list(auth="noSasl"),
+                         driverclass="org.apache.hive.jdbc.HiveDriver",
+                         classpath=getOption('dplyr.jdbc.classpath', NULL),
+                         scheme="hive2",
+                         jarfiles=c("commons-logging.*.jar",
+                                    "hadoop-common.jar",
+                                    "hive-jdbc.*.jar",
+                                    "hive-common.*.jar",
+                                    "hive-metastore.*.jar",
+                                    "hive-service.*.jar",
+                                    "libfb303.*.jar",
+                                    "libthrift.*.jar",
+                                    "commons-httpclient.*.jar",
+                                    "httpclient.*.jar",
+                                    "httpcore.*.jar",
+                                    "guava.*.jar",
+                                    "log4j.*.jar",
+                                    "slf4j-api.*.jar",
+                                    "slf4j-log4j.*.jar",
+                                    "hive-exec.jar"), ...) {
 
   if (!require("dplyr")) {
     stop("dplyr package required to connect to ImpalaDB", call. = FALSE)
@@ -214,7 +238,7 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
   if (!require("lazy")) {
     stop("lazy package required to connect to ImpalaDB", call. = FALSE)
   }
-  driverclass <- "org.apache.hive.jdbc.HiveDriver"
+
   if (length(names(opts)) > 0) {
     opts <- paste0(";", paste(lapply(names(opts), function(x){paste(x,opts[x], sep="=")}), collapse=";"))
   }
@@ -222,29 +246,11 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L, user = "", p
     opts <- ""
   }
 
-  # setup default list of jars
-  jarfiles <- c("commons-logging.*.jar",
-                "hadoop-common.jar",
-                "hive-jdbc.*.jar",
-                "hive-common.*.jar",
-                "hive-metastore.*.jar",
-                "hive-service.*.jar",
-                "libfb303.*.jar",
-                "libthrift.*.jar",
-                "commons-httpclient.*.jar",
-                "httpclient.*.jar",
-                "httpcore.*.jar",
-                "guava.*.jar",
-                "log4j.*.jar",
-                "slf4j-api.*.jar",
-                "slf4j-log4j.*.jar",
-                "hive-exec.jar")
-
   jarfiles <- c(getOption('dplyr.jdbc.jarfiles', NULL), jarfiles)
 
-  url <- paste0("jdbc:hive2://", host, ":", as.character(port), "/", dbname, opts)
+  url <- paste0("jdbc:", scheme, "://", host, ":", as.character(port), "/", dbname, opts)
   con <- dbConnect(JDBC(driverclass,
-            expandAndCheckClassPath(driverclass=driverclass, jarfiles=jarfiles),
+            expandAndCheckClassPath(classpath=classpath, driverclass=driverclass, jarfiles=jarfiles),
             identifier.quote='`'), url, ...)
   res <- dbGetQuery(con, 'SELECT version() AS version') # do this instead of dbGetInfo(con) - returns nothing because of RJDBC!
   info <- list(dbname=dbname, url=url, version=res$version)
