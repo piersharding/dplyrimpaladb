@@ -5,3 +5,7 @@ Fri Sep 11 11:39:13 NZST 2015
 Sat Jan 30 05:15:22 NZDT 2016
  * add options(dplyr.jdbc.jarfiles=c()) to enable specific
  jar file version injection - thanks WheresAlice
+
+Mon Jul 18 19:01:28 NZST 2016
+ * rework dplyr-impaladb to work with dplyr 0.5.0 where significant
+  internal changes affected sql_join(), sql_semi_join(), and sql_subquery()

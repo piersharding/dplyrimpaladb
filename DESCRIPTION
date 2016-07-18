@@ -1,7 +1,7 @@
 Package: dplyrimpaladb
 Type: Package
 Title: dplyrimpaladb: dplyr connector for ImpalaDB
-Version: 0.0.6
+Version: 0.0.7
 Author: Piers Harding <piers@ompka.net>
 Maintainer: Piers Harding <piers@ompka.net>
 Description: dplyr connector for Hadoop ImpalaDB.

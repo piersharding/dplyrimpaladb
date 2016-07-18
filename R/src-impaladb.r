@@ -298,36 +298,50 @@ double_escape <- function(x) {
   structure(x, class = c("sql", "sql", "character"))
 }
 
+random_table_name <- function(n = 10) {
+  paste0(sample(letters, n, replace = TRUE), collapse = "")
+}
+
+sql_subquery.ImpalaDBConnection <- function(con, from, name = unique_name(), ...) {
+    # print(paste0("build_sql 1: ", ...))
+    # print(paste0("build_sql 2: ", name))
+  if (is.ident(from)) {
+    setNames(from, name)
+  } else {
+    tablename <- name %||% random_table_name()
+    z <- build_sql("(", from, ") ", ident(tablename), con = con)
+    # str(from)
+    attr(z, 'tablename') <- tablename
+    # str(attributes(z))
+    z
+  }
+}
+
 #' @export
 sql_semi_join.ImpalaDBConnection <- function(con, x, y, anti = FALSE, by = NULL, ...) {
-  by <- common_by(by, x, y)
+  # X and Y are subqueries named _LEFT and _RIGHT
   left <- escape(ident("_LEFT"), con = con)
   right <- escape(ident("_RIGHT"), con = con)
-  on <- sql_vector(paste0(
-    left, ".", sql_escape_ident(con, by$x), " = ", right, ".", sql_escape_ident(con, by$y)),
-    collapse = " AND ", parens = TRUE)
-
-  # with a LEFT SEMI JOIN we can only have the LEFT column values returned
-  cols <- x$select
-  col_names <- lapply(cols, function (col) {if (length(grep(col, x=x$select)) >= 1) { "_LEFT" } else if (length(grep(col, x=y$select)) >= 1) { "_RIGHT" } else NULL})
-
-  # set the alias attribute for result columns
-  pieces <- mapply(function(x, alias) {
-      return(paste(sql_quote(alias, "`"), sql_quote(x, "`"), sep="."))
-    }, as.character(cols), col_names)
-  fields <- do.call(function(...) {paste(..., sep=", ")}, as.list(pieces))
-  # double escape so that list of fields do not get quoted
-  fields <- double_escape(fields)
-
-  from <- build_sql(
-    'SELECT ', fields, ' FROM ', sql_subquery(con, x$query$sql, "_LEFT"), '\n\n',
-    'LEFT SEMI JOIN \n',
-    sql_subquery(con, y$query$sql, "_RIGHT"), '\n',
-    ' ON ', on
+  on <- sql_vector(
+    paste0(
+      left,  ".", sql_escape_ident(con, by$x), " = ",
+      right, ".", sql_escape_ident(con, by$y)
+    ),
+    collapse = " AND ",
+    parens = TRUE,
+    con = con
   )
-  attr(from, "vars") <- x$select
-  from
+
+  build_sql(
+    'SELECT * FROM ', x, '\n\n',
+    'WHERE ', if (anti) sql('NOT '), 'EXISTS (\n',
+    '  SELECT 1 FROM ', y, '\n',
+    '  WHERE ', on, '\n',
+    ')',
+    con = con
+  )
 }
+
 
 #' @export
 sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ...) {
@@ -338,25 +352,12 @@ sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ..
     full = sql("FULL"),
     stop("Unknown join type:", type, call. = FALSE)
   )
-  by <- common_by(by, x, y)
+
+  # rerun db_query_fields() so that we know what the field list is
+  x_names <- names(dbGetQuery(con, build_sql("SELECT * FROM ", x, " WHERE 0=1", con = con)))
+  y_names <- names(dbGetQuery(con, build_sql("SELECT * FROM ", y, " WHERE 0=1", con = con)))
+
   using <- all(by$x == by$y)
-
-  # Ensure tables have unique names
-  x_names <- auto_names(x$select)
-  y_names <- auto_names(y$select)
-  uniques <- unique_names(x_names, y_names, by$x[by$x == by$y])
-
-  if (is.null(uniques)) {
-    sel_vars <- c(x_names, y_names)
-  } else {
-    x <- update(x, select = setNames(x$select, uniques$x))
-    y <- update(y, select = setNames(y$select, uniques$y))
-
-    by$x <- unname(uniques$x[by$x])
-    by$y <- unname(uniques$y[by$y])
-
-    sel_vars <- unique(c(uniques$x, uniques$y))
-  }
 
   if (using) {
     cond <- build_sql("USING ", lapply(by$x, ident), con = con)
@@ -366,8 +367,10 @@ sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ..
     cond <- build_sql("ON ", on, con = con)
   }
 
-  left <- unique_name()
-  right <- unique_name()
+  # get stash tablename from sql_subquery()
+  left <- attr(x, 'tablename')
+  right <- attr(y, 'tablename')
+
   cols <- unique(c(x_names, y_names))
   col_names <- lapply(cols, function (col) {if (length(grep(col, x=x_names)) >= 1) { left } else if (length(grep(col, x=y_names)) >= 1) { right } else NULL})
 
@@ -380,16 +383,14 @@ sql_join.ImpalaDBConnection <- function(con, x, y, type = "inner", by = NULL, ..
   # double escape so that list of fields do not get quoted
   fields <- double_escape(fields)
 
-  from <- build_sql(
-    'SELECT ', fields, ' FROM ',
-    sql_subquery(con, x$query$sql, left), "\n\n",
-    join, " JOIN \n\n" ,
-    sql_subquery(con, y$query$sql, right), "\n\n",
-    cond, con = con
+  z <- build_sql(
+    'SELECT ', fields, ' FROM ',x, "\n\n",
+    join, " JOIN\n\n" ,
+    y, "\n\n",
+    cond,
+    con = con
   )
-  attr(from, "vars") <- lapply(sel_vars, as.name)
-
-  from
+  z
 }
 
 
@@ -459,14 +460,15 @@ tbl.src_impaladb <- function(src, from, ...) {
 }
 
 #' @export
-src_translate_env.src_impaladb <- function(x) {
+sql_translate_env.ImpalaDBConnection <- function(con) {
   sql_variant(
     base_scalar,
     sql_translator(.parent = base_agg,
       n = function() sql("COUNT(*)"),
       sd =  sql_prefix("STDDEV_SAMP"),
       var = sql_prefix("VAR_SAMP"),
-      median = sql_prefix("MEDIAN")
+      median = sql_prefix("MEDIAN"),
+      paste = function(x, collapse) build_sql("group_concat(", x, collapse, ")")
     )
   )
 }
@@ -497,7 +499,7 @@ db_commit.ImpalaDBConnection <- function(con) {
 }
 
 #' @export
-db_insert_into.ImpalaDBConnection <- function(con, table, values) {
+db_insert_into.ImpalaDBConnection <- function(con, table, values, dest="") {
   # Convert factors to strings
   is_factor <- vapply(values, is.factor, logical(1))
   values[is_factor] <- lapply(values[is_factor], as.character)
@@ -517,7 +519,7 @@ db_insert_into.ImpalaDBConnection <- function(con, table, values) {
     stop("rhdfs package requires HADOOP_CMD environment variable to be set eg: HADOOP_CMD=/usr/bin/hadoop", call. = FALSE)
   }
   hdfs.init()
-  hdfs.put(tmp, '/tmp')
+  hdfs.put(tmp, paste0(dest, '/tmp'))
   # system(paste0('/usr/bin/hdfs dfs -copyFromLocal ', tmp, ' hdfs://hadoop.local.net:8020/tmp/'))
   tmp <- paste0('/tmp/', tail(unlist(strsplit(tmp, '/')), n=1))
 
@@ -569,7 +571,8 @@ db_create_index.ImpalaDBConnection <- function(con, table, columns, name = NULL,
 #' @export
 db_query_fields.ImpalaDBConnection <- function(con, from) {
   # doesn't like the ; on the end
-  qry <- dbGetQuery(con, build_sql("SELECT * FROM ", from, " WHERE 0=1", con = con))
+  sql <- sql_select(con, sql("*"), sql_subquery(con, from), where = sql("0 = 1"))
+  qry <- dbGetQuery(con, sql)
   names(qry)
 }
 
@@ -653,6 +656,7 @@ ImpalaDBQuery <- R6::R6Class("ImpalaDBQuery",
     }
   )
 )
+
 
 #' @export
 query.ImpalaDBConnection <- function(con, sql, .vars) {
