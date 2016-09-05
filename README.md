@@ -5,7 +5,7 @@ dplyrimpaladb is a Database connector for ImpalaDB for dplyr the next iteration 
 
 ## Installing dependencies
 
-To be able to write tables to ImpalaDB you will need HDFS support provided by rhdfs - follow the installation instructions from https://github.com/RevolutionAnalytics/RHadoop/wiki.
+To be able to write tables to ImpalaDB you will need the hdfs (called using system()) command which must be found in the current PATH.
 
 The interface to ImpalaDB is driven by a JDBC connection.  This will require the [driver jars](https://www.cloudera.com/downloads/connectors/impala/jdbc/2-5-29.html) to be installed from the Cloudera website. You should only need to install the impala and impala-shell packages if you actually want to run your own impala server.
 

@@ -9,3 +9,6 @@ Sat Jan 30 05:15:22 NZDT 2016
 Mon Jul 18 19:01:28 NZST 2016
  * rework dplyr-impaladb to work with dplyr 0.5.0 where significant
   internal changes affected sql_join(), sql_semi_join(), and sql_subquery()
+
+Mon Sep  5 15:24:31 NZST 2016
+ * enable local/remote destinations for hdfs uploading of tables

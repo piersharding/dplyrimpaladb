@@ -5,7 +5,7 @@
 #' are not supported in the query when using \code{tbl} on a connection to a ImpalaDB database.
 #' If you are running a local database, you only need to define the name of the database you want to connect to.
 #' ImpalaDB does nto support anti-joins.
-#' Table loading will require rhdfs - https://github.com/RevolutionAnalytics/RHadoop/wiki/rhdfs
+#' Table loading will requires the hdfs command line tool.  This must be found in the current system PATH.
 #'
 #' @template db-info
 #' @param dbname Database name
@@ -303,16 +303,12 @@ random_table_name <- function(n = 10) {
 }
 
 sql_subquery.ImpalaDBConnection <- function(con, from, name = unique_name(), ...) {
-    # print(paste0("build_sql 1: ", ...))
-    # print(paste0("build_sql 2: ", name))
   if (is.ident(from)) {
     setNames(from, name)
   } else {
     tablename <- name %||% random_table_name()
     z <- build_sql("(", from, ") ", ident(tablename), con = con)
-    # str(from)
     attr(z, 'tablename') <- tablename
-    # str(attributes(z))
     z
   }
 }
@@ -432,7 +428,7 @@ sql_create_table <- function(con, table, types, temporary = FALSE) {
 
 copy_to.src_impaladb <- function(dest, df, name = deparse(substitute(df)),
                             types = NULL, temporary = FALSE, indexes = NULL,
-                            analyze = TRUE, ...) {
+                            analyze = TRUE, hdfsdest="", ...) {
   # ImpalaDB can't create temporary tables
 
   assert_that(is.data.frame(df), is.string(name), is.flag(temporary))
@@ -440,14 +436,22 @@ copy_to.src_impaladb <- function(dest, df, name = deparse(substitute(df)),
     stop("Table ", name, " already exists.", call. = FALSE)
   }
 
+  # print("Table:")
+  # str(df)
+  # print(db_data_type(dest$con, df))
+  # print("Types:")
+  # print(types)
   types <- types %||% db_data_type(dest$con, df)
+  # print(paste0("Doint table: ", name))
+  # print(names(df))
+  # print(names(types))
   names(types) <- names(df)
 
   con <- dest$con
 
   db_begin(con)
   sql_create_table(con, name, types, temporary = temporary)
-  db_insert_into(con, name, df)
+  db_insert_into(con, name, df, hdfsdest)
   if (analyze) db_analyze(con, name)
   db_commit(con)
   tbl(dest, name)
@@ -512,16 +516,15 @@ db_insert_into.ImpalaDBConnection <- function(con, table, values, dest="") {
   write.table(values, tmp, sep = "\t", quote = FALSE,
     row.names = FALSE, col.names = FALSE,na="")
 
-  if (!require("rhdfs")) {
-    stop("rhdfs package required to connect to store data in ImpalaDB", call. = FALSE)
-  }
-  if (is.null(Sys.getenv("HADOOP_CMD"))) {
-    stop("rhdfs package requires HADOOP_CMD environment variable to be set eg: HADOOP_CMD=/usr/bin/hadoop", call. = FALSE)
-  }
-  hdfs.init()
-  hdfs.put(tmp, paste0(dest, '/tmp'))
-  # system(paste0('/usr/bin/hdfs dfs -copyFromLocal ', tmp, ' hdfs://hadoop.local.net:8020/tmp/'))
-  tmp <- paste0('/tmp/', tail(unlist(strsplit(tmp, '/')), n=1))
+  cmd <- paste0('hdfs dfs  -mkdir -p ', paste0(dest, '/tmp/dplyr-work/'))
+  system(cmd)
+  cmd <- paste0('hdfs dfs  -chmod 777 ', paste0(dest, '/tmp/dplyr-work/'))
+  system(cmd)
+  cmd <- paste0('hdfs dfs -copyFromLocal ', tmp, ' ', paste0(dest, '/tmp/dplyr-work/'))
+  system(cmd)
+  tmp <- paste0('/tmp/dplyr-work/', tail(unlist(strsplit(tmp, '/')), n=1))
+  cmd <- paste0('hdfs dfs  -chmod 666 ', paste0(dest, tmp))
+  system(cmd)
 
   sql <- build_sql("LOAD DATA INPATH ", tmp," INTO TABLE ", ident(table), con = con)
   qry_run_once(con, sql)
@@ -700,7 +703,7 @@ lahman_tables <- function() {
 }
 
 
-cache_lahman <- function(type, ...) {
+cache_lahman <- function(type, hdfsdest="", ...) {
   cache_name <- paste0("lahman_", type)
   if (is_cached(cache_name)) return(get_cache(cache_name))
 
@@ -717,7 +720,8 @@ cache_lahman <- function(type, ...) {
     message("Creating table: ", table)
 
     ids <- as.list(names(df)[grepl("ID$", names(df))])
-    copy_to(src, df, table, indexes = ids, temporary = FALSE)
+    copy_to(src, df, table, indexes = ids, types=NULL,
+            temporary = FALSE, analyze = TRUE, hdfsdest)
   }
 
   set_cache(cache_name, src)
