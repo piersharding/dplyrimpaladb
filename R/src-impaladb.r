@@ -235,10 +235,6 @@ src_impaladb <- function(dbname, host = "localhost", port = 21050L,
     stop("RJDBC package required to connect to ImpalaDB", call. = FALSE)
   }
 
-  if (!require("lazy")) {
-    stop("lazy package required to connect to ImpalaDB", call. = FALSE)
-  }
-
   if (length(names(opts)) > 0) {
     opts <- paste0(";", paste(lapply(names(opts), function(x){paste(x,opts[x], sep="=")}), collapse=";"))
   }
